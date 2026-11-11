@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#F3F5FA</color>
+    <color name="card">#FFFFFF</color>
+    <color name="card_stroke">#E8ECF4</color>
+    <color name="primary">#4C6FFF</color>
+    <color name="primary_dark">#3A57DF</color>
+    <color name="primary_soft">#EEF2FF</color>
+    <color name="text_main">#1B2333</color>
+    <color name="text_sub">#7A8599</color>
+    <color name="divider">#EEF1F6</color>
+    <color name="green">#12A66A</color>
+    <color name="green_soft">#E6F7EF</color>
+    <color name="orange">#E07A20</color>
+    <color name="orange_soft">#FFF2E2</color>
+    <color name="input_bg">#F6F8FC</color>
+    <color name="ic_launcher_background">#4C6FFF</color>
+</resources>
