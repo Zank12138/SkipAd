@@ -37,6 +37,9 @@ public class MainActivity extends Activity {
         String pkg;
     }
 
+    /** 0 表示不限制，只在应用启动后的一段时间内检测。 */
+    private static final int[] WINDOW_OPTIONS = {10, 20, 30, 0};
+
     private Prefs prefs;
 
     private TextView tvStatusBadge;
@@ -45,15 +48,19 @@ public class MainActivity extends Activity {
     private TextView tvToday;
     private TextView tvRuleCount;
     private TextView tvRuleSummary;
+    private TextView tvLearned;
     private TextView tvLog;
     private TextView btnOpenAccessibility;
     private TextView btnExcludedApps;
+    private TextView btnLaunchWindow;
 
     private Switch swEnabled;
     private Switch swToast;
     private Switch swVibrate;
-    private Switch swLaunchOnly;
     private Switch swForceGesture;
+    private Switch swPolling;
+    private Switch swRetry;
+    private Switch swDebug;
 
     private EditText etKeywords;
     private EditText etIds;
@@ -82,15 +89,19 @@ public class MainActivity extends Activity {
         tvToday = (TextView) findViewById(R.id.tvToday);
         tvRuleCount = (TextView) findViewById(R.id.tvRuleCount);
         tvRuleSummary = (TextView) findViewById(R.id.tvRuleSummary);
+        tvLearned = (TextView) findViewById(R.id.tvLearned);
         tvLog = (TextView) findViewById(R.id.tvLog);
         btnOpenAccessibility = (TextView) findViewById(R.id.btnOpenAccessibility);
         btnExcludedApps = (TextView) findViewById(R.id.btnExcludedApps);
+        btnLaunchWindow = (TextView) findViewById(R.id.btnLaunchWindow);
 
         swEnabled = (Switch) findViewById(R.id.swEnabled);
         swToast = (Switch) findViewById(R.id.swToast);
         swVibrate = (Switch) findViewById(R.id.swVibrate);
-        swLaunchOnly = (Switch) findViewById(R.id.swLaunchOnly);
         swForceGesture = (Switch) findViewById(R.id.swForceGesture);
+        swPolling = (Switch) findViewById(R.id.swPolling);
+        swRetry = (Switch) findViewById(R.id.swRetry);
+        swDebug = (Switch) findViewById(R.id.swDebug);
 
         etKeywords = (EditText) findViewById(R.id.etKeywords);
         etIds = (EditText) findViewById(R.id.etIds);
@@ -100,8 +111,11 @@ public class MainActivity extends Activity {
         swEnabled.setChecked(prefs.isEnabled());
         swToast.setChecked(prefs.isToastEnabled());
         swVibrate.setChecked(prefs.isVibrateEnabled());
-        swLaunchOnly.setChecked(prefs.isLaunchWindowOnly());
         swForceGesture.setChecked(prefs.isForceGesture());
+        swPolling.setChecked(prefs.isPollingEnabled());
+        swRetry.setChecked(prefs.isRetryEnabled());
+        swDebug.setChecked(prefs.isDebugLogEnabled());
+        btnLaunchWindow.setText(windowLabel(prefs.getLaunchWindowSec()));
         etKeywords.setText(prefs.getExtraKeywords());
         etIds.setText(prefs.getExtraIds());
     }
@@ -125,16 +139,28 @@ public class MainActivity extends Activity {
                 prefs.setVibrateEnabled(checked);
             }
         });
-        swLaunchOnly.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton button, boolean checked) {
-                prefs.setLaunchWindowOnly(checked);
-            }
-        });
         swForceGesture.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton button, boolean checked) {
                 prefs.setForceGesture(checked);
+            }
+        });
+        swPolling.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                prefs.setPollingEnabled(checked);
+            }
+        });
+        swRetry.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                prefs.setRetryEnabled(checked);
+            }
+        });
+        swDebug.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                prefs.setDebugLogEnabled(checked);
             }
         });
 
@@ -146,6 +172,8 @@ public class MainActivity extends Activity {
                     openAccessibilitySettings();
                 } else if (id == R.id.btnGuide) {
                     showGuide();
+                } else if (id == R.id.btnLaunchWindow) {
+                    cycleLaunchWindow();
                 } else if (id == R.id.btnSaveRules) {
                     saveRules();
                 } else if (id == R.id.btnExcludedApps) {
@@ -155,6 +183,10 @@ public class MainActivity extends Activity {
                 } else if (id == R.id.btnClearLog) {
                     prefs.clearLogs();
                     renderLog();
+                } else if (id == R.id.btnClearMemory) {
+                    prefs.clearMemory();
+                    refreshAll();
+                    Toast.makeText(MainActivity.this, "已清空应用记忆", Toast.LENGTH_SHORT).show();
                 } else if (id == R.id.btnResetStats) {
                     confirmResetStats();
                 }
@@ -163,11 +195,33 @@ public class MainActivity extends Activity {
 
         btnOpenAccessibility.setOnClickListener(click);
         findViewById(R.id.btnGuide).setOnClickListener(click);
+        btnLaunchWindow.setOnClickListener(click);
         findViewById(R.id.btnSaveRules).setOnClickListener(click);
         btnExcludedApps.setOnClickListener(click);
         findViewById(R.id.btnBattery).setOnClickListener(click);
         findViewById(R.id.btnClearLog).setOnClickListener(click);
+        findViewById(R.id.btnClearMemory).setOnClickListener(click);
         findViewById(R.id.btnResetStats).setOnClickListener(click);
+    }
+
+    private String windowLabel(int seconds) {
+        return seconds <= 0 ? "不限" : seconds + " 秒";
+    }
+
+    private void cycleLaunchWindow() {
+        int current = prefs.getLaunchWindowSec();
+        int index = 0;
+        for (int i = 0; i < WINDOW_OPTIONS.length; i++) {
+            if (WINDOW_OPTIONS[i] == current) {
+                index = i;
+                break;
+            }
+        }
+        int next = WINDOW_OPTIONS[(index + 1) % WINDOW_OPTIONS.length];
+        prefs.setLaunchWindowSec(next);
+        btnLaunchWindow.setText(windowLabel(next));
+        Toast.makeText(this, "检测时长：" + windowLabel(next)
+                + (next == 0 ? "（全天检测，注意误触）" : ""), Toast.LENGTH_SHORT).show();
     }
 
     private void refreshAll() {
@@ -176,7 +230,7 @@ public class MainActivity extends Activity {
             tvStatusBadge.setText("● 服务已开启");
             tvStatusBadge.setBackgroundResource(R.drawable.bg_badge_on);
             tvStatusBadge.setTextColor(getColor(android.R.color.white));
-            tvStatusHint.setText("运行中：应用启动时会自动识别并点击「跳过广告」按钮。若长时间无效果，请检查下方保活设置。");
+            tvStatusHint.setText("运行中：事件监听 + 定时轮询识别跳过按钮，点击后会验证是否生效并自动重试。若长时间无效果，请检查下方保活设置。");
             btnOpenAccessibility.setText("无障碍服务设置（已开启）");
         } else {
             tvStatusBadge.setText("● 未开启");
@@ -193,6 +247,8 @@ public class MainActivity extends Activity {
         tvRuleCount.setText(String.valueOf(ruleManager.getRuleCount()));
         tvRuleSummary.setText("内置 " + (ruleManager.getRuleCount() - ruleManager.getCustomRuleCount())
                 + " 条 · 自定义 " + ruleManager.getCustomRuleCount() + " 条");
+        tvLearned.setText("已记住 " + prefs.getLearnedCount() + " 个应用的跳过按钮");
+        btnLaunchWindow.setText(windowLabel(prefs.getLaunchWindowSec()));
         btnExcludedApps.setText("设置不跳过的应用（" + prefs.getExcludedApps().size() + "）");
         renderLog();
     }
@@ -200,7 +256,7 @@ public class MainActivity extends Activity {
     private void renderLog() {
         JSONArray logs = prefs.getLogs();
         if (logs.length() == 0) {
-            tvLog.setText("暂无记录\n成功跳过后，这里会显示时间、应用名称与命中的按钮文字。");
+            tvLog.setText("暂无记录\n成功跳过后，这里会显示时间、应用、命中的按钮与点击方式；调试模式下还会显示未命中的候选控件。");
             return;
         }
         StringBuilder sb = new StringBuilder();
@@ -308,12 +364,13 @@ public class MainActivity extends Activity {
         String message =
                 "1. 点「去开启无障碍服务」→ 在列表里找到「一跳而过 · 开屏广告跳过」→ 打开开关并确认授权。\n\n"
                         + "2. 返回本页，顶部显示「服务已开启」即生效。\n\n"
-                        + "3. 打开任意带开屏广告的 App 测试。成功时会有提示，下方「最近跳过记录」会留下命中的按钮文字。\n\n"
-                        + "4. 若某个 App 没跳过：先关掉「仅在应用启动后 10 秒内检测」；仍不行就打开「强制使用坐标点击」；也可以在「自定义规则」里补充按钮文字或控件 ID。\n\n"
-                        + "5. 保活：忽略电池优化 + 自启动白名单 + 最近任务锁定。部分国产 ROM 锁屏或清理后台后会关掉无障碍服务，需要重新开启。\n\n"
+                        + "3. 打开任意带开屏广告的 App 测试。成功时会有提示，下方「最近跳过记录」会留下命中的按钮文字与点击方式。\n\n"
+                        + "4. 某个 App 偶尔跳不过时，按顺序试：① 点「启动后检测时长」调到 30 秒或「不限」；② 打开「强制使用坐标点击」；③ 打开「调试模式」，重开那个 App，看日志里的「候选」记录，把按钮文字或 @ 后面的 ID 填进自定义规则。\n\n"
+                        + "5. 服务会自动轮询补扫、点击后验证并最多重试 4 次（控件点击 → 中心 → 右上 → 右下），只有确认按钮消失才计入统计。\n\n"
+                        + "6. 保活：忽略电池优化 + 自启动白名单 + 最近任务锁定。部分国产 ROM 锁屏或清理后台后会关掉无障碍服务，需要重新开启。\n\n"
                         + "本应用没有网络权限，全部配置与记录仅保存在本机。";
         new AlertDialog.Builder(this)
-                .setTitle("使用步骤与注意事项")
+                .setTitle("使用步骤与排障")
                 .setMessage(message)
                 .setPositiveButton("知道了", null)
                 .show();

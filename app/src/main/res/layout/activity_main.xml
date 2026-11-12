@@ -332,15 +332,23 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="仅在应用启动后 10 秒内检测"
+                    android:text="启动后检测时长"
                     android:textColor="@color/text_main"
                     android:textSize="14sp" />
 
-                <Switch
-                    android:id="@+id/swLaunchOnly"
+                <TextView
+                    android:id="@+id/btnLaunchWindow"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true" />
+                    android:background="@drawable/bg_btn_soft"
+                    android:paddingLeft="14dp"
+                    android:paddingTop="7dp"
+                    android:paddingRight="14dp"
+                    android:paddingBottom="7dp"
+                    android:text="20 秒"
+                    android:textColor="@color/primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout
@@ -364,11 +372,76 @@
                     android:layout_height="wrap_content" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="46dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="定时轮询补扫（自绘广告）"
+                    android:textColor="@color/text_main"
+                    android:textSize="14sp" />
+
+                <Switch
+                    android:id="@+id/swPolling"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="46dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="点击后验证并自动重试"
+                    android:textColor="@color/text_main"
+                    android:textSize="14sp" />
+
+                <Switch
+                    android:id="@+id/swRetry"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="46dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="调试模式：记录未命中的控件"
+                    android:textColor="@color/text_main"
+                    android:textSize="14sp" />
+
+                <Switch
+                    android:id="@+id/swDebug"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="6dp"
-                android:text="「仅在启动后 10 秒内检测」可降低误触；自绘广告无法被点击时，请打开「强制使用坐标点击」。"
+                android:text="检测时长越长越不易漏，「不限」适合广告加载慢的 App，但误触风险略增。开启调试模式后，没跳过时可在下方日志看到可疑按钮的文字 / ID，填进自定义规则即可。"
                 android:textColor="@color/text_sub"
                 android:textSize="11sp"
                 android:lineSpacingExtra="2dp" />
@@ -469,6 +542,32 @@
                 android:text="内置规则：0 条"
                 android:textColor="@color/text_sub"
                 android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tvLearned"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="已记住 0 个应用的跳过按钮"
+                    android:textColor="@color/text_sub"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/btnClearMemory"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="6dp"
+                    android:text="清空记忆"
+                    android:textColor="@color/primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===== 应用与保活 ===== -->

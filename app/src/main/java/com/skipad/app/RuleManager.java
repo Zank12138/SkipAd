@@ -11,51 +11,78 @@ import java.util.regex.PatternSyntaxException;
 /**
  * 开屏广告「跳过按钮」识别规则。
  *
- * 三条命中路径：
- *   1. 控件文字 / contentDescription 命中内置正则（跳过、5s 后跳过、Skip Ad…）
- *   2. 控件 resource-id 命中特征片段（skip / ad_close / countdown…）
- *   3. 用户在界面里补充的自定义文字与 ID 片段
- *
- * 规则缓存依据 Prefs 的 rules_version 热更新，界面保存后无需重启服务。
+ * 命中路径：文字内置正则 → 控件 ID 特征 → 用户自定义 → 用户自定义 ID。
+ * 较弱的规则（纯倒计时数字、泛化 ID）带 needEdge 标记，只允许屏幕上下边缘的控件命中，
+ * 用来兼顾「识别率」和「误触率」。
  */
 public class RuleManager {
 
-    /** 命中结果，why 用于日志展示。 */
+    /** why 用于日志；needEdge=true 表示必须位于屏幕上下边缘区域。 */
     public static class Match {
         public final String why;
+        public final boolean needEdge;
+
+        public Match(String why, boolean needEdge) {
+            this.why = why;
+            this.needEdge = needEdge;
+        }
 
         public Match(String why) {
-            this.why = why;
+            this(why, false);
+        }
+    }
+
+    private static class TextRule {
+        final Pattern pattern;
+        final boolean needEdge;
+
+        TextRule(String regex, boolean needEdge) {
+            this.pattern = Pattern.compile(regex);
+            this.needEdge = needEdge;
         }
     }
 
     /** 内置文字规则：对「去掉空白后的短文本」做匹配。 */
-    private static final Pattern[] TEXT_RULES = {
-            // 跳过 / 跳过广告 / 跳过 5 / 跳过广告 3s / 点击跳过
-            Pattern.compile("(?i)^(点击)?跳过(广告|该广告|此广告|推荐)?\\d{0,3}[sS秒]?$"),
-            // 5s 后跳过 / 3秒跳过 / 广告 5s 跳过
-            Pattern.compile("^\\d{1,3}[sS秒]?.{0,6}跳过$"),
-            Pattern.compile("(广告|剩余|倒计时)\\d{1,3}[sS秒].{0,10}跳过"),
+    private static final TextRule[] TEXT_RULES = {
+            // 跳过 / 跳过广告 / 跳过 5 / 跳过广告 3s / 点击跳过（含繁体）
+            new TextRule("(?i)^(点击|點擊)?(跳过|跳過|略過)(广告|廣告|该广告|此广告|推荐|推薦)?\\d{0,3}[sS秒]?$", false),
+            // 5s 后跳过 / 3秒跳过
+            new TextRule("^\\d{1,3}[sS秒]?.{0,6}(跳过|跳過)$", false),
+            // 广告 5s 点击跳过 / 剩余 4 秒跳过
+            new TextRule("(广告|廣告|剩余|剩餘|倒计时|倒計時)\\d{1,3}[sS秒].{0,10}(跳过|跳過)", false),
             // 英文：Skip / Skip Ad / Skip Ads / Skip 5s / Close Ad
-            Pattern.compile("(?i)^(skip|skipad|skipads|skip\\d{1,3}s?|closead|closeads)$"),
-            // 关闭广告 / 关闭该广告 / 跳过此页
-            Pattern.compile("^.{0,6}(关闭广告|关闭该广告|关闭此广告|跳过此页|跳过广告).{0,4}$"),
-            // 兜底：任何很短且包含「跳过」的按钮文字
-            Pattern.compile("^.{0,6}跳过.{0,6}$")
+            new TextRule("(?i)^(skip|skipad|skipads|skip\\d{1,3}s?|closead|closeads)$", false),
+            // 关闭广告 / 跳过此页
+            new TextRule("^.{0,6}(关闭广告|關閉廣告|关闭该广告|关闭此广告|跳过此页|跳过广告).{0,4}$", false),
+            // 兜底：任何较短且包含「跳过」的按钮文字
+            new TextRule("^.{0,6}(跳过|跳過).{0,8}$", false),
+            // ↓ 以下规则本身不够明确，只允许屏幕上下边缘的控件命中
+            new TextRule("^\\d{1,3}[sS秒]$", true),                        // 单独的 "5s"
+            new TextRule("^(广告|廣告)\\s*\\d{1,3}[sS秒]$", true),          // "广告 5s"
+            new TextRule("^(剩余|剩餘|倒计时|倒計時)\\s*\\d{1,3}[sS秒]$", true),
+            new TextRule("(?i)^(×|✕|✖|close|skip)\\s*\\d{0,3}[sS秒]?$", true)
     };
 
-    /** 这些词出现在按钮上时，说明是业务流程而非开屏广告，不点。 */
+    /** 业务流程里的「跳过」不是广告，直接否决。只保留高置信度的业务词。 */
     private static final Pattern[] NEGATIVE_RULES = {
-            Pattern.compile("(?i)(跳过登录|跳过密码|跳过验证|跳过绑定|跳过更新|跳过教程|跳过新手|跳过引导|跳过此步骤|跳过签到|跳过设置|跳过授权|跳过备份|skip[_-]?login|skip[_-]?sign|skip[_-]?update)"),
-            Pattern.compile("(以后再说|下次再说|不再提示|暂不|我知道了|取消|拒绝|不同意|同意并继续|下一步|返回|退出)")
+            Pattern.compile("(?i)(跳过|跳過).{0,4}(登录|登錄|注册|註冊|验证|驗證|绑定|綁定|密码|密碼|实名|實名|更新|升级|教程|新手|引导|引導|授权|授權|备份|備份|签到|簽到|此步骤|设置|設定)"),
+            Pattern.compile("(?i)skip[_-]?(login|sign|update|password|verify|tutorial)"),
+            Pattern.compile("(以后再说|下次再说|不再提示|我知道了|同意并继续)")
     };
 
-    /** 控件 ID 特征（统一小写后做 contains 判断）。 */
-    private static final String[] ID_KEYS = {
-            "skip", "splash_skip", "ad_skip", "close_ad", "ad_close",
-            "closead", "splash_close", "adclose", "ad_splash_close",
-            "countdown", "count_down", "count_down_view",
+    /** 强特征 ID：命中即可信。 */
+    private static final String[] STRONG_IDS = {
+            "skip", "skip_btn", "btn_skip", "tv_skip", "iv_skip", "skip_view", "skip_time",
+            "splash_skip", "ad_skip", "skip_ad", "skipad",
+            "close_ad", "ad_close", "closead", "adclose", "splash_close", "ad_splash_close",
             "tt_splash_skip", "ksad_skip", "gdt_skip", "splash_ad_close"
+    };
+
+    /** 弱特征 ID：必须在屏幕边缘才采信。 */
+    private static final String[] WEAK_IDS = {
+            "countdown", "count_down", "count_down_view", "splash", "ad_splash", "splash_ad",
+            "close_btn", "iv_close", "btn_close", "ad_close_btn", "jump_over", "jump",
+            "tt_splash", "ksad_", "gdt_ad", "interaction_close"
     };
 
     private static RuleManager sInstance;
@@ -128,53 +155,69 @@ public class RuleManager {
             return null;
         }
         String compact = text.replaceAll("\\s+", "");
-        if (compact.length() > 18) {
-            return null;
-        }
         for (Pattern pattern : NEGATIVE_RULES) {
             if (pattern.matcher(compact).find()) {
                 return null;
             }
         }
-        for (Pattern pattern : TEXT_RULES) {
-            if (pattern.matcher(compact).find()) {
-                return new Match("文字:" + clip(text));
-            }
-        }
+        // 用户自定义规则优先，且不受 18 字长度限制（长文案按钮也能补上）
         for (Pattern pattern : extraText) {
             if (pattern.matcher(text).find()) {
                 return new Match("自定义:" + clip(text));
             }
         }
+        if (compact.length() > 18) {
+            return null;
+        }
+        for (TextRule rule : TEXT_RULES) {
+            if (rule.pattern.matcher(compact).find()) {
+                return new Match("文字:" + clip(text), rule.needEdge);
+            }
+        }
         return null;
     }
 
-    public synchronized boolean matchId(String viewId) {
+    /** 返回 null 表示未命中；弱特征会带 needEdge=true。 */
+    public synchronized Match matchId(String viewId) {
         if (viewId == null || viewId.isEmpty()) {
-            return false;
+            return null;
         }
         String id = viewId.toLowerCase(Locale.ROOT);
-        for (String key : ID_KEYS) {
-            if (id.contains(key)) {
-                return true;
-            }
-        }
         for (String key : extraIds) {
             if (id.contains(key)) {
-                return true;
+                return new Match("自定义ID:" + shortId(viewId));
             }
         }
-        return false;
+        for (String key : STRONG_IDS) {
+            if (id.contains(key)) {
+                return new Match("ID:" + shortId(viewId));
+            }
+        }
+        for (String key : WEAK_IDS) {
+            if (id.contains(key)) {
+                return new Match("弱ID:" + shortId(viewId), true);
+            }
+        }
+        return null;
     }
 
     public synchronized int getRuleCount() {
         refreshIfNeeded();
-        return TEXT_RULES.length + ID_KEYS.length + extraText.size() + extraIds.size();
+        return TEXT_RULES.length + STRONG_IDS.length + WEAK_IDS.length
+                + extraText.size() + extraIds.size();
     }
 
     public synchronized int getCustomRuleCount() {
         refreshIfNeeded();
         return extraText.size() + extraIds.size();
+    }
+
+    private static String shortId(String id) {
+        if (id == null) {
+            return "";
+        }
+        int slash = id.lastIndexOf('/');
+        return slash >= 0 ? id.substring(slash + 1) : id;
     }
 
     private static String clip(String s) {

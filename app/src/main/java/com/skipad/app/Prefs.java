@@ -25,10 +25,15 @@ public class Prefs {
     private static final String K_TOAST = "toast";
     private static final String K_VIBRATE = "vibrate";
     private static final String K_LAUNCH_ONLY = "launch_only";
+    private static final String K_LAUNCH_WINDOW_SEC = "launch_window_sec";
     private static final String K_FORCE_GESTURE = "force_gesture";
+    private static final String K_POLLING = "polling";
+    private static final String K_RETRY = "retry";
+    private static final String K_DEBUG_LOG = "debug_log";
     private static final String K_EXTRA_KEYWORDS = "extra_keywords";
     private static final String K_EXTRA_IDS = "extra_ids";
     private static final String K_EXCLUDED = "excluded_apps";
+    private static final String K_MEMORY = "memory";
     private static final String K_TOTAL = "total";
     private static final String K_TODAY = "today";
     private static final String K_TODAY_DATE = "today_date";
@@ -76,6 +81,7 @@ public class Prefs {
         sp.edit().putBoolean(K_VIBRATE, value).apply();
     }
 
+    /** 兼容旧版本：新版用 getLaunchWindowSec()，0 表示不限制时长。 */
     public boolean isLaunchWindowOnly() {
         return sp.getBoolean(K_LAUNCH_ONLY, true);
     }
@@ -84,12 +90,48 @@ public class Prefs {
         sp.edit().putBoolean(K_LAUNCH_ONLY, value).apply();
     }
 
+    /** 应用切到前台后的检测窗口，单位秒；0 = 全程检测。默认 20 秒。 */
+    public int getLaunchWindowSec() {
+        return sp.getInt(K_LAUNCH_WINDOW_SEC, 20);
+    }
+
+    public void setLaunchWindowSec(int seconds) {
+        sp.edit().putInt(K_LAUNCH_WINDOW_SEC, seconds).apply();
+    }
+
     public boolean isForceGesture() {
         return sp.getBoolean(K_FORCE_GESTURE, false);
     }
 
     public void setForceGesture(boolean value) {
         sp.edit().putBoolean(K_FORCE_GESTURE, value).apply();
+    }
+
+    /** 定时轮询补扫：解决自绘广告不发窗口事件的情况。 */
+    public boolean isPollingEnabled() {
+        return sp.getBoolean(K_POLLING, true);
+    }
+
+    public void setPollingEnabled(boolean value) {
+        sp.edit().putBoolean(K_POLLING, value).apply();
+    }
+
+    /** 点击后验证是否真的生效，未生效自动换方式重试。 */
+    public boolean isRetryEnabled() {
+        return sp.getBoolean(K_RETRY, true);
+    }
+
+    public void setRetryEnabled(boolean value) {
+        sp.edit().putBoolean(K_RETRY, value).apply();
+    }
+
+    /** 调试模式：把没命中时的可疑控件记进日志，方便自己补规则。 */
+    public boolean isDebugLogEnabled() {
+        return sp.getBoolean(K_DEBUG_LOG, false);
+    }
+
+    public void setDebugLogEnabled(boolean value) {
+        sp.edit().putBoolean(K_DEBUG_LOG, value).apply();
     }
 
     // ---------- 自定义规则 ----------
@@ -124,6 +166,58 @@ public class Prefs {
 
     public void setExcludedApps(Set<String> apps) {
         sp.edit().putStringSet(K_EXCLUDED, new HashSet<String>(apps)).apply();
+    }
+
+    // ---------- 按应用记住成功命中的按钮 ----------
+
+    /** 成功跳过后记住该 App 的按钮文字 / ID，下次作为高优先级快速通道。 */
+    public synchronized void rememberHit(String pkg, String viewId, String text) {
+        if (pkg == null || pkg.isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject all = new JSONObject(sp.getString(K_MEMORY, "{}"));
+            JSONObject item = all.optJSONObject(pkg);
+            if (item == null) {
+                item = new JSONObject();
+            }
+            if (viewId != null && !viewId.isEmpty()) {
+                item.put("id", shortId(viewId));
+            }
+            if (text != null && !text.isEmpty()) {
+                item.put("text", text.trim());
+            }
+            item.put("n", item.optInt("n", 0) + 1);
+            all.put(pkg, item);
+            sp.edit().putString(K_MEMORY, all.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    public synchronized JSONObject getRemembered(String pkg) {
+        try {
+            return new JSONObject(sp.getString(K_MEMORY, "{}")).optJSONObject(pkg);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public synchronized int getLearnedCount() {
+        try {
+            return new JSONObject(sp.getString(K_MEMORY, "{}")).length();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public void clearMemory() {
+        sp.edit().putString(K_MEMORY, "{}").apply();
+    }
+
+    private static String shortId(String id) {
+        int slash = id.lastIndexOf('/');
+        String shortName = slash >= 0 ? id.substring(slash + 1) : id;
+        return shortName.length() > 40 ? shortName.substring(0, 40) : shortName;
     }
 
     // ---------- 统计 ----------
@@ -168,7 +262,7 @@ public class Prefs {
         return sp.getLong(K_HEARTBEAT, 0L);
     }
 
-    // ---------- 命中日志 ----------
+    // ---------- 命中 / 调试日志 ----------
 
     public synchronized JSONArray getLogs() {
         try {
@@ -190,7 +284,7 @@ public class Prefs {
         } catch (Exception ignored) {
         }
         JSONArray trimmed = new JSONArray();
-        for (int i = Math.max(0, all.length() - 30); i < all.length(); i++) {
+        for (int i = Math.max(0, all.length() - 60); i < all.length(); i++) {
             trimmed.put(all.opt(i));
         }
         sp.edit().putString(K_LOG, trimmed.toString()).apply();
