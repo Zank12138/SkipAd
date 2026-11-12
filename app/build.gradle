@@ -2,6 +2,33 @@ plugins {
     id 'com.android.application'
 }
 
+// 版本号唯一来源：项目根目录 version.properties。
+// 每次发版前先跑 ../gradlew bumpVersion 递增版本，否则 Android 拒绝覆盖安装。
+// 这里做严格校验：文件缺失、versionCode 非法、versionName 格式不对，直接构建失败，
+// 避免「功能更新了但版本没改」的包被悄悄打出来。
+def versionFile = rootProject.file('version.properties')
+if (!versionFile.exists()) {
+    throw new GradleException('缺少 version.properties：请在项目根目录创建并写入 versionCode / versionName')
+}
+def appVersionProps = new Properties()
+versionFile.withReader('UTF-8') { appVersionProps.load(it) }
+def rawCode = appVersionProps.getProperty('versionCode')
+def rawName = appVersionProps.getProperty('versionName')
+if (rawCode == null || !rawCode.trim().isInteger() || Integer.parseInt(rawCode.trim()) < 1) {
+    throw new GradleException("version.properties 的 versionCode 无效：${rawCode}")
+}
+if (rawName == null || !(rawName.trim() ==~ /\d+\.\d+\.\d+/)) {
+    throw new GradleException("version.properties 的 versionName 无效：${rawName}（应形如 1.1.0）")
+}
+def appVersionCode = Integer.parseInt(rawCode.trim())
+def appVersionName = rawName.trim()
+
+// 可选固定签名：存在 signing/skipad.keystore 时，本地与云端构建共用同一签名，
+// 两种来源的包就能互相覆盖安装。默认不存在 → 保持 Android Studio 默认 debug 签名，
+// 不会改变已安装旧包的签名。生成方式见根 build.gradle 的 createSigningKey 任务。
+def fixedKeystore = rootProject.file('signing/skipad.keystore')
+def useFixedSigning = fixedKeystore.exists()
+
 android {
     namespace 'com.skipad.app'
     compileSdk 34
@@ -10,16 +37,34 @@ android {
         applicationId 'com.skipad.app'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '1.0.0'
+        versionCode appVersionCode
+        versionName appVersionName
+    }
+
+    signingConfigs {
+        fixed {
+            // 仅在文件存在时填充，否则该配置不会被任何 buildType 引用
+            if (useFixedSigning) {
+                storeFile fixedKeystore
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+                // keystore 由 keytool -storetype PKCS12 生成，JDK 17 默认即 PKCS12，无需显式指定
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (useFixedSigning) {
+                signingConfig signingConfigs.fixed
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             // 使用 debug 签名，生成的 release 包可直接安装到手机（仅用于个人使用）
-            signingConfig signingConfigs.debug
+            signingConfig(useFixedSigning ? signingConfigs.fixed : signingConfigs.debug)
         }
     }
 

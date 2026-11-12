@@ -679,5 +679,16 @@
             android:textColor="@color/text_sub"
             android:textSize="11sp" />
 
+        <!-- 显示当前已安装 APK 的真实版本，用来确认覆盖安装是否生效 -->
+        <TextView
+            android:id="@+id/tvVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="版本：--"
+            android:textColor="@color/text_sub"
+            android:textSize="11sp" />
+
     </LinearLayout>
 </ScrollView>

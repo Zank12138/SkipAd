@@ -6,6 +6,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
@@ -50,6 +51,7 @@ public class MainActivity extends Activity {
     private TextView tvRuleSummary;
     private TextView tvLearned;
     private TextView tvLog;
+    private TextView tvVersion;
     private TextView btnOpenAccessibility;
     private TextView btnExcludedApps;
     private TextView btnLaunchWindow;
@@ -91,6 +93,7 @@ public class MainActivity extends Activity {
         tvRuleSummary = (TextView) findViewById(R.id.tvRuleSummary);
         tvLearned = (TextView) findViewById(R.id.tvLearned);
         tvLog = (TextView) findViewById(R.id.tvLog);
+        tvVersion = (TextView) findViewById(R.id.tvVersion);
         btnOpenAccessibility = (TextView) findViewById(R.id.btnOpenAccessibility);
         btnExcludedApps = (TextView) findViewById(R.id.btnExcludedApps);
         btnLaunchWindow = (TextView) findViewById(R.id.btnLaunchWindow);
@@ -250,7 +253,21 @@ public class MainActivity extends Activity {
         tvLearned.setText("已记住 " + prefs.getLearnedCount() + " 个应用的跳过按钮");
         btnLaunchWindow.setText(windowLabel(prefs.getLaunchWindowSec()));
         btnExcludedApps.setText("设置不跳过的应用（" + prefs.getExcludedApps().size() + "）");
+        // 显示的是「当前这台手机上已安装 APK」的真实版本，覆盖安装成功后这里会立刻变
+        tvVersion.setText(appVersionText());
         renderLog();
+    }
+
+    /** 读取实际安装包的版本信息，用于确认升级是否生效，而不是显示写死的字符串。 */
+    private String appVersionText() {
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            int code = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? (int) info.getLongVersionCode() : info.versionCode;
+            return "版本：v" + info.versionName + " (" + code + ")";
+        } catch (Exception e) {
+            return "版本：未知";
+        }
     }
 
     private void renderLog() {

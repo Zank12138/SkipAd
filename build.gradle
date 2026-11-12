@@ -2,3 +2,85 @@
 plugins {
     id 'com.android.application' version '8.1.4' apply false
 }
+
+/**
+ * 发版前跑一次，版本自动递增，避免「功能更新了但版本号没改」导致无法覆盖安装：
+ *   gradlew.bat bumpVersion                       versionCode +1，versionName 末位 +1
+ *   gradlew.bat bumpVersion -PnewVersion=1.2.0    指定版本名，versionCode 仍自动 +1
+ * 版本号只存在 version.properties 里，app/build.gradle 负责读取与校验。
+ */
+tasks.register('bumpVersion') {
+    doLast {
+        def f = rootProject.file('version.properties')
+        if (!f.exists()) {
+            throw new GradleException('缺少 version.properties，无法递增版本')
+        }
+        def props = new Properties()
+        f.withReader('UTF-8') { props.load(it) }
+        def oldCode = props.getProperty('versionCode')
+        def oldName = props.getProperty('versionName')
+        if (oldCode == null || !oldCode.trim().isInteger() || oldName == null) {
+            throw new GradleException('version.properties 内容无效，请检查 versionCode / versionName')
+        }
+        int newCode = Integer.parseInt(oldCode.trim()) + 1
+        String newName
+        if (project.hasProperty('newVersion')) {
+            newName = project.property('newVersion').toString().trim()
+            if (!(newName ==~ /\d+\.\d+\.\d+/)) {
+                throw new GradleException('newVersion 格式应为 x.y.z，例如 1.2.0')
+            }
+        } else {
+            def parts = oldName.trim().tokenize('.')
+            if (parts.size() != 3 || !parts.every { it.isInteger() }) {
+                throw new GradleException("无法自动递增 versionName：${oldName}，请用 -PnewVersion 指定")
+            }
+            newName = parts[0] + '.' + parts[1] + '.' + (Integer.parseInt(parts[2]) + 1)
+        }
+        // 保留文件里的中文注释，只替换两行版本值
+        def text = f.getText('UTF-8')
+        text = text.replaceAll(/(?m)^versionCode\s*=.*$/, 'versionCode=' + newCode)
+        text = text.replaceAll(/(?m)^versionName\s*=.*$/, 'versionName=' + newName)
+        f.write(text, 'UTF-8')
+        println "版本已更新：${oldName.trim()} (${oldCode.trim()}) -> ${newName} (${newCode})"
+        println '现在打出的包可以直接覆盖安装了（前提是签名与旧包一致）。'
+    }
+}
+
+/**
+ * 可选：生成固定的 debug 签名，让「本地 Android Studio 构建」与「GitHub Actions 构建」
+ * 使用同一把钥匙，两种来源的包也能互相覆盖安装。
+ *   gradlew.bat createSigningKey
+ * 生成后请把 signing/skipad.keystore 一并放进仓库或源码包（CI 也支持用 Secret 注入）。
+ * 注意：这是个人自用的 debug 密钥，不要用于正式分发；一旦换签名，手机上已装的旧包
+ * 需要卸载一次才能装新包，之后就可以一直覆盖安装。生成后请重新执行一次构建命令。
+ */
+tasks.register('createSigningKey') {
+    doLast {
+        def dir = rootProject.file('signing')
+        def ks = new File(dir, 'skipad.keystore')
+        if (ks.exists()) {
+            println "固定签名已存在：${ks.absolutePath}"
+            return
+        }
+        dir.mkdirs()
+        def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+        def exe = new File(System.getProperty('java.home'), 'bin/keytool' + (isWindows ? '.exe' : ''))
+        if (!exe.exists()) {
+            throw new GradleException("找不到 keytool：${exe.absolutePath}")
+        }
+        project.exec {
+            commandLine exe.absolutePath, '-genkeypair',
+                    '-keystore', ks.absolutePath,
+                    '-storetype', 'PKCS12',
+                    '-alias', 'androiddebugkey',
+                    '-keyalg', 'RSA',
+                    '-keysize', '2048',
+                    '-validity', '10950',
+                    '-storepass', 'android',
+                    '-keypass', 'android',
+                    '-dname', 'CN=SkipAd Debug, OU=Personal, O=SkipAd, L=NA, ST=NA, C=CN'
+        }
+        println "已生成固定签名：${ks.absolutePath}"
+        println '请重新执行构建命令；首次从旧签名切换需要卸载手机上已安装的旧包一次。'
+    }
+}
